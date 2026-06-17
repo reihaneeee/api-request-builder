@@ -255,6 +255,55 @@ export const Sidebar = React.memo(function Sidebar({
     );
   };
 
+  const exportCollection = (id: string) => {
+    const collection = collections.find((c) => c.id === id);
+    if (!collection) return;
+
+    // Making Json files
+    const dataStr = JSON.stringify(collection, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${collection.name}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importCollection = (file: File) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const imported = JSON.parse(content);
+        // اعتبارسنجی: باید شامل id, name, requests باشد
+        if (
+          imported &&
+          typeof imported === "object" &&
+          imported.id &&
+          typeof imported.name === "string" &&
+          Array.isArray(imported.requests)
+        ) {
+          // اطمینان از یکتایی id
+          const newId = Date.now().toString() + Math.random().toString(36).substr(2, 4);
+          const newCollection: Collection = {
+            ...imported,
+            id: newId,
+          };
+          setCollections([...collections, newCollection]);
+          alert(`Collection "${imported.name}" imported successfully!`);
+        } else {
+          alert("Invalid collection file format. Please provide a valid JSON.");
+        }
+      } catch {
+        alert("Failed to parse JSON file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+
   const toggleFavorite = (id: string) => {
     setCollections(
       collections.map((c) =>
@@ -316,6 +365,8 @@ export const Sidebar = React.memo(function Sidebar({
               onDeleteRequest={deleteRequest}
               onCopyRequest={copyRequest}
               onAddRequestToFolder={addRequestToFolder}
+              onExport={exportCollection}
+              onImport={importCollection}
             />
           )}
         </div>

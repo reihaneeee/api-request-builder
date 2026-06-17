@@ -13,13 +13,14 @@ interface Props {
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onSort: (id: string) => void;
-  onAddRequest: (id: string) => void;        // افزودن ریکوئست به کالکشن
-  onAddFolder: (id: string) => void;          // افزودن پوشه به کالکشن
+  onAddRequest: (id: string) => void;    
+  onAddFolder: (id: string) => void;       
   onRenameRequest: (collectionId: string, requestId: string) => void;
   onDuplicateRequest: (collectionId: string, requestId: string) => void;
   onDeleteRequest: (collectionId: string, requestId: string) => void;
   onCopyRequest: (collectionId: string, requestId: string) => void;
-  onAddRequestToFolder: (collectionId: string, folderId: string) => void; // جدید
+  onAddRequestToFolder: (collectionId: string, folderId: string) => void;
+  onExport: (id: string) => void;
 }
 
 export function CollectionItem({
@@ -37,6 +38,7 @@ export function CollectionItem({
   onDeleteRequest,
   onCopyRequest,
   onAddRequestToFolder,
+  onExport, 
 }: Props) {
   const [isOpen, setIsOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -67,7 +69,6 @@ export function CollectionItem({
           )}
         </div>
         <div className="flex items-center gap-1">
-          {/* دکمه + برای افزودن ریکوئست مستقیم */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -135,6 +136,7 @@ export function CollectionItem({
           { label: "Rename", onClick: () => onRename(collection.id) },
           { label: "Duplicate", onClick: () => onDuplicate(collection.id) },
           { label: "Sort", onClick: () => onSort(collection.id) },
+          { label: "Export", onClick: () => onExport(collection.id) }, 
           { label: "Delete", onClick: () => onDelete(collection.id), danger: true },
         ]}
       />

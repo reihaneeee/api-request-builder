@@ -16,7 +16,7 @@ interface Props {
 
 type Tab = "params" | "headers" | "body";
 
-// Mapping status codes to descriptions
+// توضیحات کدهای وضعیت
 const statusDescriptions: Record<number, string> = {
   200: "OK",
   201: "Created",
@@ -56,6 +56,13 @@ const RequestEditor = React.memo(function RequestEditor({
     loading: false,
   });
 
+  // وضعیت نمایش زمان و حجم پاسخ
+  const [responseMeta, setResponseMeta] = useState<{
+    duration: number | null;
+    size: number | null;
+  }>({ duration: null, size: null });
+
+  // ساخت URL کامل با پارامترها
   const fullUrl = useMemo(() => {
     if (!request.url) return "";
     try {
@@ -72,7 +79,9 @@ const RequestEditor = React.memo(function RequestEditor({
     }
   }, [request.url, request.params]);
 
+  // ---- تابع ارسال درخواست از طریق Proxy ----
   const sendRequest = async () => {
+    // اعتبارسنجی URL
     if (!request.url.trim()) {
       setResponse({
         status: null,
@@ -81,6 +90,7 @@ const RequestEditor = React.memo(function RequestEditor({
         error: "URL cannot be empty",
         loading: false,
       });
+      setResponseMeta({ duration: null, size: null });
       return;
     }
     if (!/^https?:\/\//i.test(request.url)) {
@@ -91,46 +101,76 @@ const RequestEditor = React.memo(function RequestEditor({
         error: "URL must start with http:// or https://",
         loading: false,
       });
+      setResponseMeta({ duration: null, size: null });
       return;
     }
 
     setResponse((prev) => ({ ...prev, loading: true, error: null }));
+    setResponseMeta({ duration: null, size: null });
+
+    const startTime = performance.now();
 
     try {
+      // ساخت هدرها
       const headersObj: Record<string, string> = {};
       request.headers.forEach((h) => {
         if (h.key.trim() !== "") {
-          headersObj[h.key] = h.value;
+          headersObj[h.key.trim()] = h.value;
         }
       });
 
-      let requestBody: BodyInit | undefined = undefined;
-      if (request.method !== "GET" && request.method !== "HEAD") {
+      // تعیین بدنه (فقط برای متدهای مجاز)
+      let requestBody: string | undefined = undefined;
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
         requestBody = request.body;
       }
 
-      const res = await fetch(fullUrl, {
-        method: request.method,
-        headers: headersObj,
-        body: requestBody,
+      // ارسال درخواست از طریق Proxy
+      const proxyRes = await fetch("/api/proxy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: fullUrl,
+          method: request.method,
+          headers: headersObj,
+          body: requestBody,
+        }),
       });
 
-      let responseData;
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        responseData = await res.json();
-      } else {
-        responseData = await res.text();
+      const proxyData = await proxyRes.json();
+
+      if (!proxyRes.ok) {
+        throw new Error(proxyData.error || "Proxy request failed");
+      }
+
+      // محاسبه زمان پاسخ
+      const endTime = performance.now();
+      const duration = Math.round(endTime - startTime);
+
+      // محاسبه حجم پاسخ
+      const size = new Blob([proxyData.body]).size;
+
+      setResponseMeta({ duration, size });
+
+      // پردازش داده پاسخ (تشخیص JSON یا متن ساده)
+      let responseData: unknown;
+      try {
+        responseData = JSON.parse(proxyData.body);
+      } catch {
+        responseData = proxyData.body;
       }
 
       setResponse({
-        status: res.status,
-        statusText: res.statusText,
+        status: proxyData.status,
+        statusText: proxyData.statusText,
         data: responseData,
         error: null,
         loading: false,
       });
 
+      // ذخیره در تاریخچه
       const savedRequest: SavedRequest = {
         id: request.id,
         name: request.name !== "New Request" ? request.name : `${request.method} ${request.url}`,
@@ -145,8 +185,7 @@ const RequestEditor = React.memo(function RequestEditor({
     } catch (err) {
       let errorMessage = "Network error or server unreachable";
       if (err instanceof Error) {
-        // Customize the "Failed to fetch" message
-        if (err.message === "Failed to fetch") {
+        if (err.message === "Failed to fetch" || err.message.includes("Failed to reach target server")) {
           errorMessage = "Network error or server unreachable";
         } else {
           errorMessage = err.message;
@@ -161,9 +200,11 @@ const RequestEditor = React.memo(function RequestEditor({
         error: errorMessage,
         loading: false,
       });
+      setResponseMeta({ duration: null, size: null });
     }
   };
 
+  // ---- رنگ‌بندی کد وضعیت ----
   const getStatusColor = (status: number) => {
     if (status >= 200 && status < 300) return "text-green-600 dark:text-green-400";
     if (status >= 300 && status < 400) return "text-yellow-600 dark:text-yellow-400";
@@ -172,11 +213,12 @@ const RequestEditor = React.memo(function RequestEditor({
     return "text-gray-600 dark:text-gray-400";
   };
 
+  // ---- به‌روزرسانی بخشی از درخواست ----
   const updateRequest = (updates: Partial<RequestState>) => {
     onRequestChange({ ...request, ...updates });
   };
 
-  // Clear All function
+  // ---- Clear All ----
   const clearAll = () => {
     updateRequest({
       method: "GET",
@@ -192,10 +234,13 @@ const RequestEditor = React.memo(function RequestEditor({
       error: null,
       loading: false,
     });
+    setResponseMeta({ duration: null, size: null });
   };
 
+  // ---- رندر ----
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-4">
+      {/* ردیف بالا: متد، URL، دکمه‌ها */}
       <div className="flex flex-col sm:flex-row gap-3 items-start">
         <MethodDropdown method={request.method} onChange={(m) => updateRequest({ method: m })} />
         <div className="flex-1 w-full">
@@ -218,6 +263,7 @@ const RequestEditor = React.memo(function RequestEditor({
         </div>
       </div>
 
+      {/* تب‌ها */}
       <div className="mt-6 border-b border-gray-200 dark:border-gray-700">
         <nav className="flex gap-4">
           {(["params", "headers", "body"] as const).map((tab) => (
@@ -236,6 +282,7 @@ const RequestEditor = React.memo(function RequestEditor({
         </nav>
       </div>
 
+      {/* محتوای تب‌ها */}
       <div className="mt-4">
         {activeTab === "params" && (
           <ParamsTable params={request.params} onChange={(params) => updateRequest({ params })} />
@@ -248,16 +295,24 @@ const RequestEditor = React.memo(function RequestEditor({
         )}
       </div>
 
+      {/* بخش پاسخ */}
       <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
         <h3 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Response</h3>
-        {response.loading && <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-md text-gray-500 dark:text-gray-400">Loading...</div>}
+
+        {response.loading && (
+          <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-md text-gray-500 dark:text-gray-400">
+            Loading...
+          </div>
+        )}
+
         {response.error && (
           <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md text-red-700 dark:text-red-400">
             <strong>Error:</strong> {response.error}
           </div>
         )}
+
         {response.status && (
-          <div className="mb-3">
+          <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className={`font-bold ${getStatusColor(response.status)}`}>
               Status: {response.status} {response.statusText}
               {statusDescriptions[response.status] && (
@@ -266,8 +321,14 @@ const RequestEditor = React.memo(function RequestEditor({
                 </span>
               )}
             </span>
+            {responseMeta.duration !== null && responseMeta.size !== null && (
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                · {responseMeta.duration}ms · {(responseMeta.size / 1024).toFixed(1)} KB
+              </span>
+            )}
           </div>
         )}
+
         {response.data !== null && response.data !== undefined && !response.error && (
           <div className="bg-gray-900 dark:bg-gray-950 text-gray-100 p-4 rounded-md overflow-auto max-h-96">
             <pre className="text-sm font-mono whitespace-pre-wrap">

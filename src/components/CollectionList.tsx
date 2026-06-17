@@ -1,6 +1,6 @@
 // src/components/CollectionsList.tsx
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Collection, SavedRequest } from "@/lib/types";
 import { CollectionItem } from "./CollectionItem";
 
@@ -19,7 +19,9 @@ interface Props {
   onDuplicateRequest: (collectionId: string, requestId: string) => void;
   onDeleteRequest: (collectionId: string, requestId: string) => void;
   onCopyRequest: (collectionId: string, requestId: string) => void;
-  onAddRequestToFolder: (collectionId: string, folderId: string) => void; // جدید
+  onAddRequestToFolder: (collectionId: string, folderId: string) => void; 
+  onExport: (id: string) => void;
+  onImport: (file: File) => void; 
 }
 
 export function CollectionsList({
@@ -38,8 +40,11 @@ export function CollectionsList({
   onDeleteRequest,
   onCopyRequest,
   onAddRequestToFolder,
+  onExport,
+  onImport,
 }: Props) {
   const [searchTerm, setSearchTerm] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredCollections = collections.filter((col) => {
     const lowerSearch = searchTerm.toLowerCase();    
@@ -56,6 +61,14 @@ export function CollectionsList({
     return a.name.localeCompare(b.name);
   });
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onImport(file);
+      e.target.value = ""; // reset input
+    }
+  };
+
   return (
     <div className="space-y-1">
       <div className="flex justify-between items-center mb-3">
@@ -66,6 +79,19 @@ export function CollectionsList({
         >
           + New
         </button>
+        <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-green-600 dark:text-green-400 text-sm hover:underline"
+          >
+            Import
+        </button>
+        <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".json"
+            className="hidden"
+          />
       </div>
 
       <div className="relative mb-3">
@@ -103,6 +129,7 @@ export function CollectionsList({
           onDeleteRequest={onDeleteRequest}
           onCopyRequest={onCopyRequest}
           onAddRequestToFolder={onAddRequestToFolder}
+          onExport={onExport} 
         />
       ))}
       {sortedCollections.length === 0 && (
